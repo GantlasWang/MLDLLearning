@@ -16,7 +16,7 @@ from torch.utils.data import Dataset, DataLoader, random_split
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 config = {
     'seed': 114514,
-    'select_all': False,
+    'select_all': True,
     'valid_ratio': 0.2,
     'n_epochs': 3000,
     'batch_size': 256,
@@ -24,6 +24,7 @@ config = {
     'early_stop': 200,
     'save_path': './models/model.ckpt'
 }
+
 
 def same_seed(seed):
     '''Fixes random number generator seeds for reproducibility.'''
@@ -34,15 +35,18 @@ def same_seed(seed):
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
 
+
 def train_valid_split(data_set, valid_ratio, seed):
     '''Split provided training data into training set and validation set'''
     valid_set_size = int(valid_ratio * len(data_set))
     train_set_size = len(data_set) - valid_set_size
-    train_set, valid_set = random_split(data_set, [train_set_size, valid_set_size], generator=torch.Generator().manual_seed(seed))
+    train_set, valid_set = random_split(data_set, [train_set_size, valid_set_size],
+                                        generator=torch.Generator().manual_seed(seed))
     return np.array(train_set), np.array(valid_set)
 
+
 def predict(test_loader, model, device):
-    model.eval() # Set your model to evaluation mode.
+    model.eval()  # Set your model to evaluation mode.
     preds = []
     for x in tqdm(test_loader):
         x = x.to(device)
@@ -52,6 +56,7 @@ def predict(test_loader, model, device):
     preds = torch.cat(preds, dim=0).numpy()
     return preds
 
+
 class C19Dataset(Dataset):
     def __init__(self, x, y=None):
         self.x = torch.FloatTensor(x)
@@ -60,20 +65,23 @@ class C19Dataset(Dataset):
         else:
             self.y = torch.FloatTensor(y)
 
-    def __getitem__(self, item):
+    def __getitem__(self, idx):
         if self.y is None:
-            return self.x[item]
+            return self.x[idx]
         else:
-            return self.x[item], self.y[item]
+            return self.x[idx], self.y[idx]
 
     def __len__(self):
         return len(self.x)
+
 
 class C19Model(nn.Module):
     def __init__(self, input_dim):
         super(C19Model, self).__init__()
         self.layers = nn.Sequential(
-            nn.Linear(input_dim, 16),
+            nn.Linear(input_dim, 32),
+            nn.ReLU(),
+            nn.Linear(32, 16),
             nn.ReLU(),
             nn.Linear(16, 8),
             nn.ReLU(),
@@ -85,12 +93,13 @@ class C19Model(nn.Module):
         x = x.squeeze(1)
         return x
 
+
 def select_feat(train_data, valid_data, test_data, select_all=True):
     y_train = train_data[:, -1]
     y_valid = valid_data[:, -1]
     raw_x_train = train_data[:, :-1]
     raw_x_valid = valid_data[:, :-1]
-    raw_x_test = test_data[:, :-1]
+    raw_x_test = test_data
 
     if select_all:
         feat_item = list(range(raw_x_train.shape[1]))
@@ -98,6 +107,7 @@ def select_feat(train_data, valid_data, test_data, select_all=True):
         feat_item = [0, 1, 2, 3, 4]
 
     return raw_x_train[:, feat_item], raw_x_valid[:, feat_item], raw_x_test[:, feat_item], y_train, y_valid
+
 
 def trainer(train_loader, valid_loader, model, config, device):
     criterion = nn.MSELoss(reduction='mean')
@@ -181,9 +191,11 @@ x_train, x_valid, x_test, y_train, y_valid = select_feat(train_data, valid_data,
 
 print(f'number of features: {x_train.shape[1]}')
 
-train_dataset = C19Dataset(x_train, y_train),
-valid_dataset = C19Dataset(x_valid, y_valid),
+train_dataset = C19Dataset(x_train, y_train)
+valid_dataset = C19Dataset(x_valid, y_valid)
 test_dataset = C19Dataset(x_test)
+
+# Pytorch data loader loads pytorch dataset into batches.
 
 train_loader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, pin_memory=True)
 valid_loader = DataLoader(valid_dataset, batch_size=config['batch_size'], shuffle=True, pin_memory=True)
@@ -193,6 +205,14 @@ model = C19Model(input_dim=x_train.shape[1]).to(device)
 trainer(train_loader, valid_loader, model, config, device)
 
 
+def save_pred(preds, file):
+    with open(file, 'w') as fp:
+        writer = csv.writer(fp)
+        writer.writerow(['id', 'tested_positive'])
+        for i, p in enumerate(preds):
+            writer.writerow([i, p])
 
 
-
+# model.load_state_dict(torch.load(config['save_path']))
+# preds = predict(test_loader, model, device)
+# save_pred(preds, 'pred.csv')
