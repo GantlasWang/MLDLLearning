@@ -195,15 +195,14 @@ train_dataset = C19Dataset(x_train, y_train)
 valid_dataset = C19Dataset(x_valid, y_valid)
 test_dataset = C19Dataset(x_test)
 
-# Pytorch data loader loads pytorch dataset into batches.
-
 train_loader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, pin_memory=True)
 valid_loader = DataLoader(valid_dataset, batch_size=config['batch_size'], shuffle=True, pin_memory=True)
 test_loader = DataLoader(test_dataset, batch_size=config['batch_size'], shuffle=False, pin_memory=True)
 
+# print(x_train.shape[1])
+
 model = C19Model(input_dim=x_train.shape[1]).to(device)
 trainer(train_loader, valid_loader, model, config, device)
-
 
 def save_pred(preds, file):
     with open(file, 'w') as fp:
